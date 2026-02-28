@@ -91,13 +91,15 @@ class ClockView @JvmOverloads constructor(
         var startX  = cx - totalW / 2f
         dotPaint.color = Color.parseColor("#111111")
         for (ch in timeStr) {
-            val grid = dotDigits[ch] ?: run { startX += charW + charGap; continue }
-            for (row in grid.indices) {
-                for (col in 0..4) {
-                    if (col < grid[row].length && grid[row][col] == '1') {
-                        val px = startX + col*(dotSize+dotGap) + dotSize/2f
-                        val py = cy - h*0.10f + row*(dotSize+dotGap) + dotSize/2f
-                        canvas.drawCircle(px, py, dotSize/2f, dotPaint)
+            val grid = dotDigits[ch]
+            if (grid != null) {
+                for (row in grid.indices) {
+                    for (col in 0..4) {
+                        if (col < grid[row].length && grid[row][col] == '1') {
+                            val px = startX + col*(dotSize+dotGap) + dotSize/2f
+                            val py = cy - h*0.10f + row*(dotSize+dotGap) + dotSize/2f
+                            canvas.drawCircle(px, py, dotSize/2f, dotPaint)
+                        }
                     }
                 }
             }
