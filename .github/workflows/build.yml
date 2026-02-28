@@ -3,8 +3,6 @@ name: Build Wear OS APK
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -21,7 +19,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Install Gradle 8.1.1 directly via SDKMAN — no wrapper jar needed
       - name: Install Gradle via SDKMAN
         run: |
           curl -s "https://get.sdkman.io" | bash
@@ -29,11 +26,8 @@ jobs:
           sdk install gradle 8.1.1
           echo "$HOME/.sdkman/candidates/gradle/current/bin" >> $GITHUB_PATH
 
-      - name: Verify Gradle
-        run: gradle --version
-
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
