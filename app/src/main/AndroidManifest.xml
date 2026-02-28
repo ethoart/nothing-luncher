@@ -2,11 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-feature android:name="android.hardware.type.watch" />
-
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.BATTERY_STATS" />
 
     <application
         android:allowBackup="true"
@@ -30,15 +30,13 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".AppDrawerActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme.Light" />
+        <activity android:name=".AppDrawerActivity" android:exported="false"
+            android:theme="@style/AppTheme.Dark" />
 
-        <activity
-            android:name=".WallpaperPickerActivity"
-            android:exported="false" />
+        <activity android:name=".QuickPanelActivity" android:exported="false"
+            android:theme="@style/AppTheme.Dark" />
+
+        <activity android:name=".WallpaperPickerActivity" android:exported="false" />
 
     </application>
-
 </manifest>

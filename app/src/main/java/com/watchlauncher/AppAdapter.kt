@@ -1,5 +1,7 @@
 package com.watchlauncher
 
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,48 +13,44 @@ class AppAdapter(
     private var apps: List<AppInfo>,
     private val onAppClick: (AppInfo) -> Unit,
     private val onAppLongClick: (AppInfo) -> Unit
-) : RecyclerView.Adapter<AppAdapter.ViewHolder>() {
+) : RecyclerView.Adapter<AppAdapter.VH>() {
 
-    private var filteredApps: List<AppInfo> = apps.toList()
+    private var filtered: List<AppInfo> = apps.toList()
 
-    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val icon: ImageView = view.findViewById(R.id.appIcon)
-        val label: TextView = view.findViewById(R.id.appLabel)
+    inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+        val icon: ImageView = v.findViewById(R.id.appIcon)
+        val label: TextView = v.findViewById(R.id.appLabel)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_app, parent, false)
-        return ViewHolder(view)
-    }
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        VH(LayoutInflater.from(parent.context).inflate(R.layout.item_app, parent, false))
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val app = filteredApps[position]
-        holder.icon.setImageDrawable(app.icon)
-        holder.label.text = app.label
-        holder.itemView.setOnClickListener { onAppClick(app) }
-        holder.itemView.setOnLongClickListener {
-            onAppLongClick(app)
-            true
-        }
-    }
+    override fun getItemCount() = filtered.size
 
-    override fun getItemCount() = filteredApps.size
+    override fun onBindViewHolder(h: VH, position: Int) {
+        val app = filtered[position]
 
-    /** Filter by search query */
-    fun filter(query: String) {
-        filteredApps = if (query.isBlank()) {
-            apps.toList()
+        // Try retro pixel icon first, fall back to real icon
+        val retroBmp: Bitmap? = RetroIconPainter.getBitmap(app.packageName,
+            h.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_size))
+        if (retroBmp != null) {
+            h.icon.setImageBitmap(retroBmp)
         } else {
-            apps.filter { it.label.contains(query, ignoreCase = true) }
+            h.icon.setImageDrawable(app.icon)
         }
+
+        h.label.text = app.label
+        h.itemView.setOnClickListener { onAppClick(app) }
+        h.itemView.setOnLongClickListener { onAppLongClick(app); true }
+    }
+
+    fun filter(q: String) {
+        filtered = if (q.isBlank()) apps.toList()
+                   else apps.filter { it.label.contains(q, ignoreCase = true) }
         notifyDataSetChanged()
     }
 
-    /** Update the full app list (after install/uninstall) */
     fun updateApps(newApps: List<AppInfo>) {
-        apps = newApps
-        filteredApps = newApps.toList()
-        notifyDataSetChanged()
+        apps = newApps; filtered = newApps.toList(); notifyDataSetChanged()
     }
 }

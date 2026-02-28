@@ -1,42 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<!-- Nothing OS app drawer: pure black, 3-col grid, NO search bar -->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/drawerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#F2F2F2">
+    android:background="#FF111111">
 
-    <!-- Nothing-OS style search bar -->
-    <EditText
-        android:id="@+id/searchBar"
-        android:layout_width="match_parent"
-        android:layout_height="38dp"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="6dp"
-        android:background="@drawable/bg_search_nothing"
-        android:hint="Search"
-        android:textColor="#111111"
-        android:textColorHint="#AAAAAA"
-        android:textSize="12sp"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
-        android:imeOptions="actionSearch"
-        android:inputType="text"
-        android:singleLine="true" />
-
-    <!-- App grid -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/appRecyclerView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp"
-        android:paddingBottom="6dp"
+        android:paddingTop="6dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="4dp"
         android:scrollbars="none" />
 
-</LinearLayout>
+    <!-- Swipe down hint -->
+    <View
+        android:layout_width="24dp"
+        android:layout_height="3dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_swipe_hint" />
+
+</FrameLayout>

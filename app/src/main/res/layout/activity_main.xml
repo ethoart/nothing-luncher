@@ -6,35 +6,26 @@
     android:layout_height="match_parent"
     android:background="#FF000000">
 
-    <!-- Wallpaper -->
-    <ImageView
+    <android.widget.ImageView
         android:id="@+id/wallpaperView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:contentDescription="Wallpaper" />
 
-    <!-- Dark scrim -->
-    <View
-        android:id="@+id/scrimView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#55000000" />
-
-    <!-- Clock — full screen canvas -->
+    <!-- Full-screen clock canvas — no dock -->
     <com.watchlauncher.ClockView
         android:id="@+id/clockView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginBottom="64dp" />
+        android:layout_height="match_parent" />
 
-    <!-- Face name label (fades out after switch) -->
+    <!-- Face name label fades in/out on switch -->
     <TextView
         android:id="@+id/faceLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="8dp"
         android:paddingStart="10dp"
         android:paddingEnd="10dp"
         android:paddingTop="3dp"
@@ -44,38 +35,5 @@
         android:textSize="9sp"
         android:alpha="0"
         android:text="Nothing OS" />
-
-    <!-- Swipe hint dots row (which face we're on) -->
-    <LinearLayout
-        android:id="@+id/faceDotsRow"
-        android:layout_width="wrap_content"
-        android:layout_height="6dp"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="72dp"
-        android:orientation="horizontal"
-        android:gravity="center" />
-
-    <!-- Dock -->
-    <LinearLayout
-        android:id="@+id/dockContainer"
-        android:layout_width="match_parent"
-        android:layout_height="58dp"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="4dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="4dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="@drawable/bg_dock"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp" />
-
-    <!-- Swipe up hint bar -->
-    <View
-        android:layout_width="28dp"
-        android:layout_height="3dp"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="5dp"
-        android:background="@drawable/bg_swipe_hint" />
 
 </FrameLayout>

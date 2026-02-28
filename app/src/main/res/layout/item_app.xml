@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing OS retro app item: dark card, large pixel icon -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center"
-    android:padding="6dp"
-    android:layout_margin="4dp"
-    android:background="@drawable/bg_app_card">
+    android:padding="5dp"
+    android:layout_margin="3dp"
+    android:background="@drawable/bg_app_card_dark">
 
     <ImageView
         android:id="@+id/appIcon"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="@dimen/icon_size"
+        android:layout_height="@dimen/icon_size"
         android:scaleType="fitCenter"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="5dp"
         android:contentDescription="App icon" />
 
     <TextView
@@ -24,10 +25,10 @@
         android:gravity="center"
         android:maxLines="1"
         android:ellipsize="end"
-        android:textColor="#111111"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="6dp" />
+        android:textColor="#CCCCCC"
+        android:textSize="8sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="3dp"
+        android:layout_marginBottom="5dp" />
 
 </LinearLayout>
