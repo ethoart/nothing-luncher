@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Large app item — Nothing OS style: white card, big icon, bold label -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -7,7 +6,7 @@
     android:orientation="vertical"
     android:gravity="center"
     android:padding="6dp"
-    android:margin="4dp"
+    android:layout_margin="4dp"
     android:background="@drawable/bg_app_card">
 
     <ImageView
