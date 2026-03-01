@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/missRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF1A0800">
+
+    <!-- Full screen animated Miss Minutes -->
+    <com.watchlauncher.ClockView
+        android:id="@+id/missClockView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Speech bubble (shown when talking) -->
+    <TextView
+        android:id="@+id/speechBubble"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="28dp"
+        android:background="@drawable/bg_speech_bubble"
+        android:textColor="#111111"
+        android:textSize="9sp"
+        android:fontFamily="monospace"
+        android:padding="8dp"
+        android:gravity="center"
+        android:maxLines="3"
+        android:visibility="gone"
+        android:text="" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_pill"
+        android:textColor="#FF8C00"
+        android:textSize="8sp"
+        android:fontFamily="monospace"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text="Tap to talk" />
+
+</FrameLayout>
