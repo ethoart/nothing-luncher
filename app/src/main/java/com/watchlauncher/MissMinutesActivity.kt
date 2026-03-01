@@ -54,7 +54,7 @@ class MissMinutesActivity : AppCompatActivity() {
     // ── Gemini config ──────────────────────────────────────────────────────
     // FIX: use gemini-1.5-flash (definitely available) — upgrade to 2.0 if key supports it
     private val API_KEY = "AIzaSyD3pPUv_tEdUb9-HKBeTwTVSfw5EWJm3cw"
-    private val API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$API_KEY"
+    private val API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$API_KEY"
 
     // FIX: System prompt crafted for smart, varied, contextual responses
     private val SYSTEM_PROMPT = """You are Miss Minutes, the cheerful animated clock mascot of the TVA (Time Variance Authority) from the Marvel show Loki. You live inside a smart watch.
@@ -397,60 +397,72 @@ CHARACTER RULES:
     //   4. Error details logged & shown so you know exactly what failed
     // ════════════════════════════════════════════════════════════════════════
     private fun askGemini(userMsg: String) {
-        Thread {
-            try {
-                val url = URL(API_URL)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.doOutput = true
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 25_000
+        // Try models in order until one works
+        val modelsToTry = listOf(
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash",
+            "gemini-pro"
+        )
+        Thread { tryGeminiWithModels(userMsg, modelsToTry) }.start()
+    }
 
-                // Build current user turn
-                val userTurn = JSONObject().apply {
-                    put("role", "user")
-                    put("parts", JSONArray().put(JSONObject().put("text", userMsg)))
-                }
+    private fun tryGeminiWithModels(userMsg: String, models: List<String>, modelIndex: Int = 0) {
+        if (modelIndex >= models.size) {
+            handler.post {
+                statusText.text = "TAP TO TALK"
+                say("The Sacred Timeline servers are down, Sugar! Try again later!")
+            }
+            return
+        }
 
-                // Conversation contents = full history (last 10 turns) + this message
-                val contents = JSONArray()
-                synchronized(history) {
-                    for (msg in history.takeLast(10)) {
-                        contents.put(msg)
-                    }
-                }
-                contents.put(userTurn)
+        val model = models[modelIndex]
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$API_KEY"
+        android.util.Log.d("MissMin", "Trying model: $model")
 
-                // FIX: "system_instruction" snake_case is the correct Gemini REST API field name
-                val body = JSONObject().apply {
-                    put("system_instruction", JSONObject().apply {
-                        put("parts", JSONArray().put(
-                            JSONObject().put("text", SYSTEM_PROMPT)
-                        ))
-                    })
-                    put("contents", contents)
-                    put("generationConfig", JSONObject().apply {
-                        put("temperature", 0.95)       // slightly higher = more varied
-                        put("maxOutputTokens", 100)    // short replies
-                        put("topP", 0.94)
-                        put("topK", 50)
-                    })
-                }
+        try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 25_000
 
-                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
-                writer.write(body.toString())
-                writer.flush(); writer.close()
+            val userTurn = JSONObject().apply {
+                put("role", "user")
+                put("parts", JSONArray().put(JSONObject().put("text", userMsg)))
+            }
 
-                val code = conn.responseCode
+            val contents = JSONArray()
+            synchronized(history) {
+                for (msg in history.takeLast(10)) contents.put(msg)
+            }
+            contents.put(userTurn)
 
-                if (code == 200) {
+            val body = JSONObject().apply {
+                put("system_instruction", JSONObject().apply {
+                    put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT)))
+                })
+                put("contents", contents)
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.95)
+                    put("maxOutputTokens", 100)
+                    put("topP", 0.94)
+                    put("topK", 50)
+                })
+            }
+
+            val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+            writer.write(body.toString()); writer.flush(); writer.close()
+
+            val code = conn.responseCode
+            android.util.Log.d("MissMin", "HTTP $code for model $model")
+
+            when (code) {
+                200 -> {
                     val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
-
                     try {
-                        val json = JSONObject(raw)
-                        val reply = json
+                        val reply = JSONObject(raw)
                             .getJSONArray("candidates")
                             .getJSONObject(0)
                             .getJSONObject("content")
@@ -460,7 +472,6 @@ CHARACTER RULES:
                             .trim()
                             .take(400)
 
-                        // Add both turns to history for context in next call
                         synchronized(history) {
                             history.add(userTurn)
                             history.add(JSONObject().apply {
@@ -468,57 +479,47 @@ CHARACTER RULES:
                                 put("parts", JSONArray().put(JSONObject().put("text", reply)))
                             })
                         }
-
                         handler.post { say(reply) }
 
-                    } catch (parseEx: Exception) {
-                        android.util.Log.e("MissMin", "Parse error: $parseEx | raw: ${raw.take(200)}")
-                        handler.post {
-                            statusText.text = "PARSE ERR"
-                            say("Something scrambled my brain, Sugar! Try again!")
-                        }
-                    }
-
-                } else {
-                    val errBody = try {
-                        conn.errorStream?.bufferedReader()?.readText() ?: ""
-                    } catch (_: Exception) { "" }
-                    android.util.Log.e("MissMin", "HTTP $code | $errBody")
-                    handler.post {
-                        // Show HTTP code in status so you can debug — e.g. 403 = bad API key
-                        statusText.text = "API ERR $code"
-                        val msg = when (code) {
-                            400 -> "The TVA's having a bad hair day! Check logcat for details, Sugar!"
-                            403 -> "Invalid API key, Honey! Check your Gemini key!"
-                            429 -> "Too many questions at once, Sugar! Give me a second to breathe!"
-                            500, 503 -> "Gemini servers are down, Darlin'! Try again in a moment!"
-                            else -> "Hmm, error $code from the Sacred Timeline servers, Sugar!"
-                        }
-                        say(msg)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MissMin", "Parse err: $e | raw: ${raw.take(200)}")
+                        handler.post { say("Something scrambled my circuits, Sugar! Try again!") }
                     }
                 }
-                conn.disconnect()
-
-            } catch (e: java.net.UnknownHostException) {
-                android.util.Log.e("MissMin", "No internet: ${e.message}")
-                handler.post {
-                    statusText.text = "NO INTERNET"
-                    say("No internet connection, Sugar! I can't reach the Sacred Timeline!")
+                404 -> {
+                    // Model not found — try next
+                    android.util.Log.w("MissMin", "Model $model not found (404), trying next")
+                    conn.disconnect()
+                    tryGeminiWithModels(userMsg, models, modelIndex + 1)
+                    return
                 }
-            } catch (e: java.net.SocketTimeoutException) {
-                android.util.Log.e("MissMin", "Timeout: ${e.message}")
-                handler.post {
-                    statusText.text = "TIMEOUT"
-                    say("The Sacred Timeline is taking too long to respond, Darlin'! Try again!")
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("MissMin", "Error: ${e.message}")
-                handler.post {
+                429 -> handler.post {
                     statusText.text = "TAP TO TALK"
-                    say("Something went sideways in the TVA, Sugar! Tap to try again!")
+                    say("Too many questions at once, Sugar! Give me just a moment!")
+                }
+                403 -> handler.post {
+                    statusText.text = "API KEY ERROR"
+                    say("TVA access denied, Honey! The API key needs updating!")
+                }
+                else -> {
+                    val errBody = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
+                    android.util.Log.e("MissMin", "HTTP $code: $errBody")
+                    handler.post {
+                        statusText.text = "ERR $code"
+                        say("Sacred Timeline hiccup! Error $code — try again, Sugar!")
+                    }
                 }
             }
-        }.start()
+            conn.disconnect()
+
+        } catch (e: java.net.UnknownHostException) {
+            handler.post { statusText.text = "NO INTERNET"; say("No internet, Sugar! Can't reach the TVA!") }
+        } catch (e: java.net.SocketTimeoutException) {
+            handler.post { statusText.text = "TIMEOUT"; say("The TVA's taking too long, Darlin'! Try again!") }
+        } catch (e: Exception) {
+            android.util.Log.e("MissMin", "Exception: ${e.message}")
+            handler.post { statusText.text = "TAP TO TALK"; say("Something went sideways, Sugar! Tap to try again!") }
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════

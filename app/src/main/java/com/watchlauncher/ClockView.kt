@@ -94,12 +94,13 @@ class ClockView @JvmOverloads constructor(
             WatchFaceStyle.WAVE_SEIKO    -> drawWave(canvas)
             WatchFaceStyle.PIP_BOY       -> drawPipBoy(canvas)
             WatchFaceStyle.JAMES_BOND    -> drawJamesBond(canvas)
-            WatchFaceStyle.CASIO_RETRO        -> drawCasio(canvas)
-            WatchFaceStyle.MISS_MINUTES_FACE    -> drawMissMinutesFace(canvas)
-            WatchFaceStyle.MISS_MINUTES_GLOWING -> drawMissMinutesGlowing(canvas)
-            WatchFaceStyle.TVA_CRT_MONITOR      -> drawTvaCrtMonitor(canvas)
-            WatchFaceStyle.TVA_TIMEDOOR         -> drawTvaTimeDoor(canvas)
-            WatchFaceStyle.MISS_MINUTES_SCARED  -> drawMissMinutesScared(canvas)
+            WatchFaceStyle.CASIO_RETRO           -> drawCasio(canvas)
+            WatchFaceStyle.MISS_MINUTES_FACE     -> drawMissMinutesFace(canvas)
+            WatchFaceStyle.MISS_MINUTES_GLOWING  -> drawImageFace(canvas, "watchfaces/mm_glowing.jpg")
+            WatchFaceStyle.MISS_MINUTES_GIF      -> drawGifFace(canvas)
+            WatchFaceStyle.TVA_CRT_MONITOR       -> drawImageFace(canvas, "watchfaces/tva_monitor.jpg")
+            WatchFaceStyle.TVA_TIMEDOOR          -> drawImageFace(canvas, "watchfaces/tva_timedoor.jpg")
+            WatchFaceStyle.MISS_MINUTES_SCARED   -> drawImageFace(canvas, "watchfaces/mm_scared.jpg")
         }
     }
 
@@ -486,611 +487,153 @@ class ClockView @JvmOverloads constructor(
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // 11. MISS MINUTES: GLOWING — warm amber glow, cartoon clock character
-    // Based on: glowing amber stage appearance, rosy cheeks, big eyelashes
+    // IMAGE-BASED WATCH FACES
+    // Loads real JPG/PNG from assets, scales to fill screen, overlays time
     // ════════════════════════════════════════════════════════════════════════
-    private fun drawMissMinutesGlowing(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f; val cy = h / 2f
-        val c = cal()
-        val r = minOf(w, h) / 2f
 
-        // ── Deep warm dark background ──────────────────────────────────────
-        p.style = Paint.Style.FILL
-        p.color = Color.parseColor("#1A0800")
+    // Cache: asset path → Bitmap (loaded once, reused every frame)
+    private val bitmapCache = mutableMapOf<String, Bitmap>()
+
+    // GIF player for the animated Miss Minutes face
+    private var gifPlayer: GifPlayer? = null
+    private var gifFrameIndex = 0
+    private val gifFrames = mutableListOf<Bitmap>()
+    private var gifLoaded = false
+
+    private fun loadBitmap(assetPath: String): Bitmap? {
+        bitmapCache[assetPath]?.let { return it }
+        return try {
+            val stream = context.assets.open(assetPath)
+            val bmp = BitmapFactory.decodeStream(stream)
+            stream.close()
+            if (bmp != null) bitmapCache[assetPath] = bmp
+            bmp
+        } catch (e: Exception) {
+            android.util.Log.e("ClockView", "Failed to load $assetPath: ${e.message}")
+            null
+        }
+    }
+
+    private fun loadGifFrames() {
+        if (gifLoaded) return
+        gifLoaded = true
+        Thread {
+            val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            for (i in 0..46) {
+                try {
+                    val stream = context.assets.open("watchfaces/mm_gif_frames/frame_${i.toString().padStart(2,'0')}.png")
+                    val bmp = BitmapFactory.decodeStream(stream, null, opts)
+                    stream.close()
+                    if (bmp != null) synchronized(gifFrames) { gifFrames.add(bmp) }
+                } catch (_: Exception) {}
+            }
+        }.start()
+    }
+
+    /**
+     * Draw a JPG/PNG asset as the full watch face background,
+     * then overlay the current time in amber on the bottom.
+     */
+    private fun drawImageFace(canvas: Canvas, assetPath: String) {
+        val w = width.toFloat(); val h = height.toFloat()
+        val c = cal()
+
+        // Black fallback
+        p.color = Color.BLACK; p.style = Paint.Style.FILL
         canvas.drawRect(0f, 0f, w, h, p)
 
-        // Radial warm glow behind clock body
-        val glowShader = android.graphics.RadialGradient(
-            cx, cy * 0.88f, r * 1.1f,
-            intArrayOf(
-                Color.argb(180, 255, 130, 0),
-                Color.argb(60, 200, 80, 0),
-                Color.argb(0, 120, 40, 0)
-            ),
-            floatArrayOf(0f, 0.55f, 1f),
+        val bmp = loadBitmap(assetPath) ?: run {
+            // Show loading text if bitmap not ready
+            val lp = retroPaint(h * 0.08f, Color.parseColor("#FF8C00"))
+            canvas.drawText("LOADING...", w / 2f, h / 2f, lp)
+            return
+        }
+
+        // Scale bitmap to fill screen (center-crop style)
+        val srcW = bmp.width.toFloat(); val srcH = bmp.height.toFloat()
+        val scale = maxOf(w / srcW, h / srcH)
+        val dstW = srcW * scale; val dstH = srcH * scale
+        val dstL = (w - dstW) / 2f; val dstT = (h - dstH) / 2f
+        val dst = RectF(dstL, dstT, dstL + dstW, dstT + dstH)
+        canvas.drawBitmap(bmp, null, dst, null)
+
+        // Dark gradient at bottom for time readability
+        val grad = android.graphics.LinearGradient(
+            0f, h * 0.72f, 0f, h,
+            Color.argb(0, 0, 0, 0), Color.argb(200, 0, 0, 0),
             android.graphics.Shader.TileMode.CLAMP
         )
-        p.shader = glowShader
-        canvas.drawRect(0f, 0f, w, h, p)
-        p.shader = null
+        p.shader = grad; canvas.drawRect(0f, h * 0.72f, w, h, p); p.shader = null
 
-        // ── Clock body — amber circle ──────────────────────────────────────
-        val bodyR = r * 0.70f
-        val bodyCy = cy * 0.88f
-        p.style = Paint.Style.FILL
-        p.color = Color.parseColor("#E87A00")
-        canvas.drawCircle(cx, bodyCy, bodyR, p)
+        // Time — large amber retro font
+        val timeStr = String.format("%02d:%02d",
+            c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
+        val tp2 = retroPaint(h * 0.140f, Color.parseColor("#FFAA00"))
+        // Shadow
+        tp2.color = Color.argb(180, 80, 30, 0)
+        canvas.drawText(timeStr, w / 2f + 2f, h * 0.890f + 2f, tp2)
+        // Main
+        tp2.color = Color.parseColor("#FFAA00")
+        canvas.drawText(timeStr, w / 2f, h * 0.890f, tp2)
 
-        // Lighter inner glow on body
-        val bodyGlow = android.graphics.RadialGradient(
-            cx - bodyR * 0.25f, bodyCy - bodyR * 0.25f, bodyR * 0.7f,
-            intArrayOf(Color.parseColor("#FFB84D"), Color.parseColor("#CC6600")),
-            null, android.graphics.Shader.TileMode.CLAMP
-        )
-        p.shader = bodyGlow
-        canvas.drawCircle(cx, bodyCy, bodyR, p)
-        p.shader = null
-
-        // ── Clock tick marks ──────────────────────────────────────────────
-        p.color = Color.parseColor("#7A3300"); p.style = Paint.Style.FILL
-        for (i in 0..11) {
-            val angle = (i / 12f * 2 * Math.PI - Math.PI / 2).toFloat()
-            val isMajor = (i % 3 == 0)
-            val tickLen = if (isMajor) bodyR * 0.13f else bodyR * 0.07f
-            val tickW   = if (isMajor) bodyR * 0.040f else bodyR * 0.024f
-            val ox = cx + (bodyR - tickLen) * Math.cos(angle.toDouble()).toFloat()
-            val oy = bodyCy + (bodyR - tickLen) * Math.sin(angle.toDouble()).toFloat()
-            val ix = cx + bodyR * 0.82f * Math.cos(angle.toDouble()).toFloat()
-            val iy = bodyCy + bodyR * 0.82f * Math.sin(angle.toDouble()).toFloat()
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE; strokeWidth = tickW
-                color = Color.parseColor("#7A3300"); strokeCap = Paint.Cap.ROUND
-            }
-            canvas.drawLine(ox, oy, ix, iy, tp)
-        }
-
-        // ── Big cartoon eyes ───────────────────────────────────────────────
-        val eyeY = bodyCy - bodyR * 0.10f
-        val eyeOffX = bodyR * 0.28f
-        val eyeRX = bodyR * 0.22f; val eyeRY = bodyR * 0.26f
-
-        // White of eyes
-        p.color = Color.WHITE; p.style = Paint.Style.FILL
-        canvas.drawOval(android.graphics.RectF(cx - eyeOffX - eyeRX, eyeY - eyeRY,
-            cx - eyeOffX + eyeRX, eyeY + eyeRY), p)
-        canvas.drawOval(android.graphics.RectF(cx + eyeOffX - eyeRX, eyeY - eyeRY,
-            cx + eyeOffX + eyeRX, eyeY + eyeRY), p)
-
-        // Pupils
-        p.color = Color.parseColor("#1A0800")
-        canvas.drawCircle(cx - eyeOffX, eyeY + eyeRY * 0.1f, eyeRX * 0.60f, p)
-        canvas.drawCircle(cx + eyeOffX, eyeY + eyeRY * 0.1f, eyeRX * 0.60f, p)
-
-        // Eye shine
-        p.color = Color.WHITE
-        canvas.drawCircle(cx - eyeOffX - eyeRX * 0.22f, eyeY - eyeRY * 0.22f, eyeRX * 0.18f, p)
-        canvas.drawCircle(cx + eyeOffX - eyeRX * 0.22f, eyeY - eyeRY * 0.22f, eyeRX * 0.18f, p)
-
-        // Eyelashes — 4 curved strokes per eye
-        val lashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.030f
-            color = Color.parseColor("#3A1500"); strokeCap = Paint.Cap.ROUND
-        }
-        for (side in listOf(-1f, 1f)) {
-            val ex = cx + side * eyeOffX
-            val lashAngles = listOf(-0.5f, -0.25f, 0f, 0.25f, 0.5f)
-            for (la in lashAngles) {
-                val baseAngle = (Math.PI * 1.5).toFloat() + la
-                val bx = ex + eyeRX * Math.cos(baseAngle.toDouble()).toFloat()
-                val by = eyeY + eyeRY * Math.sin(baseAngle.toDouble()).toFloat()
-                val outAngle = (Math.PI * 1.5 - 0.3 + la).toFloat()
-                val lashLen = bodyR * (if (la == 0f) 0.14f else 0.10f)
-                canvas.drawLine(bx, by,
-                    bx + lashLen * Math.cos(outAngle.toDouble()).toFloat(),
-                    by + lashLen * Math.sin(outAngle.toDouble()).toFloat(), lashPaint)
-            }
-        }
-
-        // Nose dot
-        p.color = Color.parseColor("#7A3300"); p.style = Paint.Style.FILL
-        canvas.drawCircle(cx, eyeY + eyeRY * 0.55f, bodyR * 0.028f, p)
-
-        // Rosy cheeks
-        val blushPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb(80, 255, 120, 60)
-        }
-        canvas.drawOval(android.graphics.RectF(
-            cx - eyeOffX * 1.55f, eyeY + eyeRY * 0.35f,
-            cx - eyeOffX * 0.35f, eyeY + eyeRY * 0.95f), blushPaint)
-        canvas.drawOval(android.graphics.RectF(
-            cx + eyeOffX * 0.35f, eyeY + eyeRY * 0.35f,
-            cx + eyeOffX * 1.55f, eyeY + eyeRY * 0.95f), blushPaint)
-
-        // Smile
-        val smilePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.038f
-            color = Color.parseColor("#7A3300"); strokeCap = Paint.Cap.ROUND
-        }
-        val smileY = eyeY + eyeRY * 1.20f
-        canvas.drawArc(android.graphics.RectF(cx - bodyR * 0.20f, smileY - bodyR * 0.08f,
-            cx + bodyR * 0.20f, smileY + bodyR * 0.12f), 20f, 140f, false, smilePaint)
-
-        // ── Clock hands ───────────────────────────────────────────────────
-        val sec  = c.get(Calendar.SECOND) + c.get(Calendar.MILLISECOND) / 1000f
-        val minF = c.get(Calendar.MINUTE) + sec / 60f
-        val hrF  = (c.get(Calendar.HOUR) % 12) + minF / 60f
-
-        val hrAngle  = (hrF / 12f  * 2 * Math.PI - Math.PI / 2).toFloat()
-        val minAngle = (minF / 60f * 2 * Math.PI - Math.PI / 2).toFloat()
-
-        // Hour hand
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.060f
-            color = Color.parseColor("#5A2200"); strokeCap = Paint.Cap.ROUND
-        }.also {
-            canvas.drawLine(cx, bodyCy,
-                cx + bodyR * 0.38f * Math.cos(hrAngle.toDouble()).toFloat(),
-                bodyCy + bodyR * 0.38f * Math.sin(hrAngle.toDouble()).toFloat(), it)
-        }
-        // Minute hand
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.038f
-            color = Color.parseColor("#5A2200"); strokeCap = Paint.Cap.ROUND
-        }.also {
-            canvas.drawLine(cx, bodyCy,
-                cx + bodyR * 0.55f * Math.cos(minAngle.toDouble()).toFloat(),
-                bodyCy + bodyR * 0.55f * Math.sin(minAngle.toDouble()).toFloat(), it)
-        }
-
-        // ── Digital time below body ────────────────────────────────────────
-        val timePaint = retroPaint(h * 0.072f, Color.parseColor("#FFAA00"))
-        canvas.drawText(
-            String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
-            cx, bodyCy + bodyR + h * 0.085f, timePaint)
-
-        // Date tiny
-        val dp = retroSmallPaint(h * 0.048f, Color.parseColor("#884400"))
-        val DAYS2 = arrayOf("SUN","MON","TUE","WED","THU","FRI","SAT")
-        val MONTHS2 = arrayOf("JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC")
-        canvas.drawText("${DAYS2[c.get(Calendar.DAY_OF_WEEK)-1]} ${c.get(Calendar.DAY_OF_MONTH)} ${MONTHS2[c.get(Calendar.MONTH)]}",
-            cx, bodyCy + bodyR + h * 0.140f, dp)
+        // Date — small below time
+        val dateStr = "${DAYS[c.get(Calendar.DAY_OF_WEEK) - 1]}  ${c.get(Calendar.DAY_OF_MONTH)} ${MONTHS[c.get(Calendar.MONTH)]}"
+        val dp2 = retroSmallPaint(h * 0.058f, Color.parseColor("#CC7700"))
+        canvas.drawText(dateStr, w / 2f, h * 0.950f, dp2)
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // 12. TVA CRT MONITOR — phosphor amber CRT screen, Sacred Timeline branch,
-    //     event data table. Based on TVA screen aesthetic from Loki.
-    // ════════════════════════════════════════════════════════════════════════
-    private fun drawTvaCrtMonitor(canvas: Canvas) {
+    /**
+     * Animated GIF face — cycles through extracted frames,
+     * overlays time at bottom.
+     */
+    private fun drawGifFace(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f
-        val c = cal()
 
-        // ── CRT body / bezel ──────────────────────────────────────────────
-        p.style = Paint.Style.FILL
-        p.color = Color.parseColor("#1A1000")
+        // Kick off frame loading if not done yet
+        loadGifFrames()
+
+        p.color = Color.BLACK; p.style = Paint.Style.FILL
         canvas.drawRect(0f, 0f, w, h, p)
 
-        // Screen bezel (rounded rect, dark brown)
-        p.color = Color.parseColor("#0F0900")
-        canvas.drawRoundRect(w*0.04f, h*0.04f, w*0.96f, h*0.96f, 18f, 18f, p)
+        val frames: List<Bitmap>
+        synchronized(gifFrames) { frames = gifFrames.toList() }
 
-        // Screen glass (dark greenish amber)
-        p.color = Color.parseColor("#050300")
-        canvas.drawRoundRect(w*0.08f, h*0.08f, w*0.92f, h*0.92f, 10f, 10f, p)
+        if (frames.isEmpty()) {
+            val lp = retroPaint(h * 0.08f, Color.parseColor("#FF8C00"))
+            canvas.drawText("LOADING...", w / 2f, h / 2f, lp)
+            return
+        }
 
-        // CRT phosphor glow overlay
-        val crtGlow = android.graphics.RadialGradient(
-            cx, h * 0.5f, w * 0.52f,
-            intArrayOf(Color.argb(25, 255, 140, 0), Color.argb(0, 0, 0, 0)),
-            null, android.graphics.Shader.TileMode.CLAMP
+        // Advance frame index every ~55ms via animTick
+        gifFrameIndex = ((animTick * frames.size * 3.5f).toInt()) % frames.size
+
+        val bmp = frames[gifFrameIndex]
+        val srcW = bmp.width.toFloat(); val srcH = bmp.height.toFloat()
+        val scale = maxOf(w / srcW, h / srcH)
+        val dstW = srcW * scale; val dstH = srcH * scale
+        val dstL = (w - dstW) / 2f; val dstT = (h - dstH) / 2f
+        canvas.drawBitmap(bmp, null, RectF(dstL, dstT, dstL + dstW, dstT + dstH), null)
+
+        // Bottom gradient + time overlay (same as image faces)
+        val grad = android.graphics.LinearGradient(
+            0f, h * 0.72f, 0f, h,
+            Color.argb(0, 0, 0, 0), Color.argb(200, 0, 0, 0),
+            android.graphics.Shader.TileMode.CLAMP
         )
-        p.shader = crtGlow; canvas.drawRect(0f, 0f, w, h, p); p.shader = null
+        p.shader = grad; canvas.drawRect(0f, h * 0.72f, w, h, p); p.shader = null
 
-        // CRT scan lines
-        p.color = Color.argb(28, 0, 0, 0); p.style = Paint.Style.FILL
-        var sy = h * 0.08f
-        while (sy < h * 0.92f) {
-            canvas.drawRect(w*0.08f, sy, w*0.92f, sy + 1.2f, p)
-            sy += 3.2f
-        }
-
-        // ── TVA header bar ────────────────────────────────────────────────
-        p.color = Color.parseColor("#CC6600"); p.style = Paint.Style.FILL
-        canvas.drawRect(w*0.08f, h*0.08f, w*0.92f, h*0.155f, p)
-        val hdrPaint = retroPaint(h * 0.058f, Color.parseColor("#0F0900"))
-        canvas.drawText("TVA", cx, h * 0.136f, hdrPaint)
-
-        // ── Sacred Timeline branch graphic ────────────────────────────────
-        // Draw glowing amber branching timeline lines
-        val branchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
-            color = Color.parseColor("#FF8800")
-        }
-        // Main trunk
-        branchPaint.strokeWidth = 3.5f
-        canvas.drawLine(w * 0.10f, h * 0.34f, w * 0.90f, h * 0.26f, branchPaint)
-        // Branches up
-        branchPaint.strokeWidth = 2.2f
-        canvas.drawLine(w * 0.22f, h * 0.32f, w * 0.30f, h * 0.20f, branchPaint)
-        canvas.drawLine(w * 0.45f, h * 0.295f, w * 0.55f, h * 0.18f, branchPaint)
-        canvas.drawLine(w * 0.68f, h * 0.278f, w * 0.75f, h * 0.19f, branchPaint)
-        // Branches down
-        canvas.drawLine(w * 0.30f, h * 0.315f, w * 0.35f, h * 0.40f, branchPaint)
-        canvas.drawLine(w * 0.58f, h * 0.285f, w * 0.65f, h * 0.37f, branchPaint)
-        canvas.drawLine(w * 0.76f, h * 0.272f, w * 0.80f, h * 0.35f, branchPaint)
-        // Sub-branches
-        branchPaint.strokeWidth = 1.4f
-        canvas.drawLine(w * 0.30f, h * 0.20f, w * 0.26f, h * 0.14f, branchPaint)
-        canvas.drawLine(w * 0.30f, h * 0.20f, w * 0.36f, h * 0.14f, branchPaint)
-        canvas.drawLine(w * 0.55f, h * 0.18f, w * 0.52f, h * 0.13f, branchPaint)
-        canvas.drawLine(w * 0.55f, h * 0.18f, w * 0.60f, h * 0.13f, branchPaint)
-        // Glow dots on branch tips
-        branchPaint.style = Paint.Style.FILL; branchPaint.color = Color.parseColor("#FFBB44")
-        for ((bx, by) in listOf(
-            Pair(w*0.30f, h*0.14f), Pair(w*0.36f, h*0.14f),
-            Pair(w*0.52f, h*0.13f), Pair(w*0.60f, h*0.13f),
-            Pair(w*0.75f, h*0.19f), Pair(w*0.90f, h*0.26f)
-        )) {
-            canvas.drawCircle(bx, by, 4f, branchPaint)
-        }
-
-        // Nexus flare — animated glow on one branch point
-        val flare = (0.5f + 0.5f * Math.sin(animTick * 2 * Math.PI * 1.5).toFloat())
-        val flarePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb((150 * flare).toInt(), 255, 200, 60)
-        }
-        canvas.drawCircle(w * 0.45f, h * 0.295f, 8f * (0.6f + 0.4f * flare), flarePaint)
-
-        // ── Data table ────────────────────────────────────────────────────
-        val amber  = Color.parseColor("#CC8800")
-        val amberDim = Color.parseColor("#664400")
-        val mono   = retroSmallPaint(h * 0.046f, amber, Paint.Align.LEFT)
-        val monoDim= retroSmallPaint(h * 0.040f, amberDim, Paint.Align.LEFT)
-
-        // Header row
-        val col1 = w * 0.10f; val col2 = w * 0.38f; val col3 = w * 0.58f
-        canvas.drawText("EVENT#", col1, h * 0.470f, monoDim)
-        canvas.drawText("DATE", col2, h * 0.470f, monoDim)
-        canvas.drawText("TIME", col3, h * 0.470f, monoDim)
-
-        // Divider
-        p.color = amberDim; p.style = Paint.Style.FILL
-        canvas.drawRect(w*0.10f, h*0.480f, w*0.90f, h*0.483f, p)
-
-        // Rows — current time highlighted
-        val hr  = c.get(Calendar.HOUR_OF_DAY); val mn = c.get(Calendar.MINUTE)
-        val day = c.get(Calendar.DAY_OF_MONTH); val mo = c.get(Calendar.MONTH) + 1
-        val yr  = c.get(Calendar.YEAR)
-        val rows = listOf(
-            Triple("46470152-027", String.format("%02d.%02d.%04d", day, mo, yr), String.format("%02d:%02d:%02d", hr, mn, c.get(Calendar.SECOND))),
-            Triple("46474709-031", "03.31.1492", "04:06:03"),
-            Triple("46465109-703", "04.23.2301", "08:39:42"),
-            Triple("46462044-006", "10.25.1551", "18:09:34"),
-            Triple("46443270-421", "11.22.1999", "08:02:13")
-        )
-        rows.forEachIndexed { i, (ev, dt, tm) ->
-            val ry = h * 0.535f + i * h * 0.070f
-            val paint = if (i == 0) mono else monoDim
-            if (i == 0) {
-                p.color = Color.argb(30, 255, 140, 0); p.style = Paint.Style.FILL
-                canvas.drawRect(w*0.09f, ry - h*0.042f, w*0.91f, ry + h*0.010f, p)
-            }
-            canvas.drawText(ev, col1, ry, paint)
-            canvas.drawText(dt, col2, ry, paint)
-            canvas.drawText(tm, col3, ry, paint)
-        }
-
-        // ── Bottom menu bar ────────────────────────────────────────────────
-        p.color = Color.parseColor("#331A00"); p.style = Paint.Style.FILL
-        canvas.drawRect(w*0.08f, h*0.890f, w*0.92f, h*0.920f, p)
-        val menuP = retroSmallPaint(h * 0.038f, Color.parseColor("#996633"), Paint.Align.LEFT)
-        val menuItems = listOf("FILE","EDIT","VIEW","MODE","HELP")
-        menuItems.forEachIndexed { i, item ->
-            canvas.drawText(item, w * 0.10f + i * w * 0.165f, h * 0.913f, menuP)
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // 13. TVA TIMEDOOR — black grid, 3D time door wireframe, digital stats,
-    //     TVA logo. Directly inspired by the Wear OS face in the images.
-    // ════════════════════════════════════════════════════════════════════════
-    private fun drawTvaTimeDoor(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f
         val c = cal()
-        val amber = Color.parseColor("#CC6600")
-        val amberBright = Color.parseColor("#FF8C00")
+        val timeStr = String.format("%02d:%02d",
+            c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
+        val tp2 = retroPaint(h * 0.140f, Color.parseColor("#FFAA00"))
+        tp2.color = Color.argb(180, 80, 30, 0)
+        canvas.drawText(timeStr, w / 2f + 2f, h * 0.890f + 2f, tp2)
+        tp2.color = Color.parseColor("#FFAA00")
+        canvas.drawText(timeStr, w / 2f, h * 0.890f, tp2)
 
-        // ── Black grid background ─────────────────────────────────────────
-        p.color = Color.parseColor("#0A0400"); p.style = Paint.Style.FILL
-        canvas.drawRect(0f, 0f, w, h, p)
-        val gridP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = 0.8f
-            color = Color.argb(60, 150, 80, 0)
-        }
-        val gridStep = w * 0.09f
-        var gx = 0f
-        while (gx <= w) { canvas.drawLine(gx, 0f, gx, h, gridP); gx += gridStep }
-        var gy = 0f
-        while (gy <= h) { canvas.drawLine(0f, gy, w, gy, gridP); gy += gridStep }
-
-        // ── Digital time — top center ─────────────────────────────────────
-        val timeP = retroPaint(h * 0.110f, amberBright)
-        canvas.drawText(
-            String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
-            cx, h * 0.120f, timeP)
-        // Seconds — smaller
-        val secP = retroSmallPaint(h * 0.052f, amber, Paint.Align.RIGHT)
-        canvas.drawText(String.format("%02d", c.get(Calendar.SECOND)), w * 0.82f, h * 0.098f, secP)
-
-        // ── TimeDoor 3D wireframe — center ────────────────────────────────
-        // Front face rect
-        val fL = w * 0.28f; val fR = w * 0.72f
-        val fT = h * 0.200f; val fB = h * 0.620f
-        // Back face (offset = perspective)
-        val off = w * 0.060f
-        val bL = fL + off; val bR = fR - off
-        val bT = fT + off * 0.8f; val bB = fB - off * 0.8f
-
-        val doorP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = 2.8f; color = amber
-        }
-        // Front rect
-        canvas.drawRect(fL, fT, fR, fB, doorP)
-        // Back rect
-        canvas.drawRect(bL, bT, bR, bB, doorP)
-        // Corner connectors (4 lines linking front to back)
-        canvas.drawLine(fL, fT, bL, bT, doorP)
-        canvas.drawLine(fR, fT, bR, bT, doorP)
-        canvas.drawLine(fL, fB, bL, bB, doorP)
-        canvas.drawLine(fR, fB, bR, bB, doorP)
-
-        // Animated shimmer on the door opening
-        val shimmer = (0.4f + 0.6f * Math.abs(Math.sin(animTick * 2 * Math.PI * 0.7)).toFloat())
-        val doorFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb((20 * shimmer).toInt(), 255, 140, 0)
-        }
-        canvas.drawRect(bL + 1f, bT + 1f, bR - 1f, bB - 1f, doorFill)
-
-        // TIMEDOOR label
-        val labelP = retroSmallPaint(h * 0.052f, amber)
-        canvas.drawText("TIMEDOOR", cx, h * 0.660f, labelP)
-
-        // ── Stats row (left: steps, right: heart) ─────────────────────────
-        // Left — runner / steps
-        val statsSmall = retroSmallPaint(h * 0.044f, amber, Paint.Align.LEFT)
-        canvas.drawText("⊙ 0 STEPS", w * 0.06f, h * 0.760f, statsSmall)
-        // Right — heart rate
-        val statsSmallR = retroSmallPaint(h * 0.044f, amber, Paint.Align.RIGHT)
-        canvas.drawText("♥ 72 BPM", w * 0.94f, h * 0.760f, statsSmallR)
-
-        // ── Battery — top left / top right ────────────────────────────────
-        val batP = retroSmallPaint(h * 0.044f, amber, Paint.Align.LEFT)
-        canvas.drawText("⊞ 100%", w * 0.06f, h * 0.168f, batP)
-        val batPR = retroSmallPaint(h * 0.044f, amber, Paint.Align.RIGHT)
-        canvas.drawText("▣ 100%", w * 0.94f, h * 0.168f, batPR)
-
-        // ── Left / right navigation arrows ────────────────────────────────
-        val arrowP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = amber }
-        // Left arrow
-        val laPath = android.graphics.Path().apply {
-            moveTo(w * 0.06f, h * 0.415f)
-            lineTo(w * 0.02f, h * 0.415f - w * 0.04f)
-            lineTo(w * 0.02f, h * 0.415f + w * 0.04f)
-            close()
-        }
-        canvas.drawPath(laPath, arrowP)
-        // Right arrow
-        val raPath = android.graphics.Path().apply {
-            moveTo(w * 0.94f, h * 0.415f)
-            lineTo(w * 0.98f, h * 0.415f - w * 0.04f)
-            lineTo(w * 0.98f, h * 0.415f + w * 0.04f)
-            close()
-        }
-        canvas.drawPath(raPath, arrowP)
-
-        // ── Date ──────────────────────────────────────────────────────────
-        val dateP = retroSmallPaint(h * 0.060f, amber)
-        canvas.drawText(
-            String.format("%02d.%02d.%02d",
-                c.get(Calendar.DAY_OF_MONTH),
-                c.get(Calendar.MONTH) + 1,
-                c.get(Calendar.YEAR) % 100),
-            cx, h * 0.810f, dateP)
-
-        // ── TVA logo text ─────────────────────────────────────────────────
-        // Stylised block TVA lettering (approximate the logo with bold outlines)
-        val tvaP = retroPaint(h * 0.095f, amberBright)
-        canvas.drawText("TVA", cx, h * 0.920f, tvaP)
-        // Bottom border under TVA
-        p.color = amber; p.style = Paint.Style.FILL
-        canvas.drawRect(cx - w*0.18f, h*0.930f, cx + w*0.18f, h*0.935f, p)
+        val dateStr = "${DAYS[c.get(Calendar.DAY_OF_WEEK) - 1]}  ${c.get(Calendar.DAY_OF_MONTH)} ${MONTHS[c.get(Calendar.MONTH)]}"
+        val dp2 = retroSmallPaint(h * 0.058f, Color.parseColor("#CC7700"))
+        canvas.drawText(dateStr, w / 2f, h * 0.950f, dp2)
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // 14. MISS MINUTES: SCARED / ALERT — wide eyes, raised hands, red Nexus
-    //     alert overlay. Based on the "hands up" scared pose from Loki S2.
-    // ════════════════════════════════════════════════════════════════════════
-    private fun drawMissMinutesScared(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f; val cy = h / 2f
-        val c = cal()
-        val r = minOf(w, h) / 2f
-
-        // ── Warm amber-brown background ────────────────────────────────────
-        p.style = Paint.Style.FILL
-        p.color = Color.parseColor("#200800")
-        canvas.drawRect(0f, 0f, w, h, p)
-
-        // Pulse red alert glow — Nexus Event!
-        val alertPulse = (0.3f + 0.7f * Math.abs(Math.sin(animTick * 2 * Math.PI * 1.8)).toFloat())
-        val alertGlow = android.graphics.RadialGradient(
-            cx, cy, r * 1.2f,
-            intArrayOf(
-                Color.argb((100 * alertPulse).toInt(), 255, 40, 0),
-                Color.argb(0, 0, 0, 0)
-            ),
-            null, android.graphics.Shader.TileMode.CLAMP
-        )
-        p.shader = alertGlow; canvas.drawRect(0f, 0f, w, h, p); p.shader = null
-
-        // ── "NEXUS EVENT" alert text ───────────────────────────────────────
-        val alertP = retroSmallPaint(h * 0.052f, Color.argb((200 * alertPulse).toInt(), 255, 80, 0))
-        canvas.drawText("⚠ NEXUS EVENT DETECTED ⚠", cx, h * 0.085f, alertP)
-
-        // ── Clock body — amber, slightly larger than arms ──────────────────
-        val bodyR = r * 0.68f
-        val bodyCy = cy * 0.90f
-        p.style = Paint.Style.FILL
-        p.color = Color.parseColor("#D97000")
-        canvas.drawCircle(cx, bodyCy, bodyR, p)
-        // Subtle gradient on body
-        val bodyG = android.graphics.RadialGradient(
-            cx - bodyR*0.3f, bodyCy - bodyR*0.3f, bodyR*0.9f,
-            intArrayOf(Color.parseColor("#F09030"), Color.parseColor("#B05800")),
-            null, android.graphics.Shader.TileMode.CLAMP
-        )
-        p.shader = bodyG; canvas.drawCircle(cx, bodyCy, bodyR, p); p.shader = null
-
-        // Clock tick marks
-        val tkP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
-            color = Color.parseColor("#7A3800")
-        }
-        for (i in 0..11) {
-            val angle = (i / 12f * 2 * Math.PI - Math.PI / 2).toFloat()
-            tkP.strokeWidth = if (i % 3 == 0) bodyR * 0.045f else bodyR * 0.025f
-            val len = if (i % 3 == 0) bodyR * 0.14f else bodyR * 0.08f
-            canvas.drawLine(
-                cx + (bodyR - len) * Math.cos(angle.toDouble()).toFloat(),
-                bodyCy + (bodyR - len) * Math.sin(angle.toDouble()).toFloat(),
-                cx + bodyR * 0.86f * Math.cos(angle.toDouble()).toFloat(),
-                bodyCy + bodyR * 0.86f * Math.sin(angle.toDouble()).toFloat(), tkP)
-        }
-
-        // ── SCARED WIDE eyes (much bigger, very round) ─────────────────────
-        val eyeY = bodyCy - bodyR * 0.05f
-        val eyeOffX = bodyR * 0.27f
-        val eyeRX = bodyR * 0.26f; val eyeRY = bodyR * 0.30f  // Very wide
-
-        // White sclera
-        p.color = Color.WHITE; p.style = Paint.Style.FILL
-        canvas.drawOval(android.graphics.RectF(cx - eyeOffX - eyeRX, eyeY - eyeRY,
-            cx - eyeOffX + eyeRX, eyeY + eyeRY), p)
-        canvas.drawOval(android.graphics.RectF(cx + eyeOffX - eyeRX, eyeY - eyeRY,
-            cx + eyeOffX + eyeRX, eyeY + eyeRY), p)
-
-        // Pupils — small and centered (scared = more white showing)
-        p.color = Color.parseColor("#1A0800")
-        canvas.drawCircle(cx - eyeOffX, eyeY, eyeRX * 0.50f, p)
-        canvas.drawCircle(cx + eyeOffX, eyeY, eyeRX * 0.50f, p)
-        // Tiny highlight
-        p.color = Color.WHITE
-        canvas.drawCircle(cx - eyeOffX - eyeRX * 0.18f, eyeY - eyeRY * 0.18f, eyeRX * 0.14f, p)
-        canvas.drawCircle(cx + eyeOffX - eyeRX * 0.18f, eyeY - eyeRY * 0.18f, eyeRX * 0.14f, p)
-
-        // Eyelashes (simpler — fewer, shorter when scared and wide)
-        val lP2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.028f
-            color = Color.parseColor("#3A1500"); strokeCap = Paint.Cap.ROUND
-        }
-        for (side in listOf(-1f, 1f)) {
-            val ex = cx + side * eyeOffX
-            for (la in listOf(-0.4f, 0f, 0.4f)) {
-                val ang = (Math.PI * 1.5).toFloat() + la
-                val bx = ex + eyeRX * Math.cos(ang.toDouble()).toFloat()
-                val by = eyeY + eyeRY * Math.sin(ang.toDouble()).toFloat()
-                val oa = (Math.PI * 1.5 - 0.25 + la).toFloat()
-                canvas.drawLine(bx, by,
-                    bx + bodyR * 0.10f * Math.cos(oa.toDouble()).toFloat(),
-                    by + bodyR * 0.10f * Math.sin(oa.toDouble()).toFloat(), lP2)
-            }
-        }
-
-        // Nose
-        p.color = Color.parseColor("#7A3300"); p.style = Paint.Style.FILL
-        canvas.drawCircle(cx, eyeY + eyeRY * 0.62f, bodyR * 0.026f, p)
-
-        // STRAIGHT mouth (scared / worried — flat line)
-        val mouthP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.038f
-            color = Color.parseColor("#7A3300"); strokeCap = Paint.Cap.ROUND
-        }
-        canvas.drawLine(cx - bodyR * 0.18f, eyeY + eyeRY * 1.28f,
-            cx + bodyR * 0.18f, eyeY + eyeRY * 1.28f, mouthP)
-
-        // ── Raised HANDS ──────────────────────────────────────────────────
-        val handPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL; color = Color.WHITE
-        }
-        val armPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.090f
-            color = Color.parseColor("#C06000"); strokeCap = Paint.Cap.ROUND
-        }
-
-        // Left arm — up and out
-        val laX1 = cx - bodyR * 0.85f; val laY1 = bodyCy + bodyR * 0.15f
-        val laX2 = cx - bodyR * 1.35f; val laY2 = bodyCy - bodyR * 0.50f
-        canvas.drawLine(laX1, laY1, laX2, laY2, armPaint)
-        // Left hand (5-finger splayed)
-        canvas.drawCircle(laX2, laY2, bodyR * 0.11f, handPaint)
-        val lhfP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.040f
-            color = Color.parseColor("#444444"); strokeCap = Paint.Cap.ROUND
-        }
-        for (fi in -2..2) {
-            val fa = (-Math.PI * 0.55 + fi * 0.22).toFloat()
-            canvas.drawLine(laX2, laY2,
-                laX2 + bodyR * 0.14f * Math.cos(fa.toDouble()).toFloat(),
-                laY2 + bodyR * 0.14f * Math.sin(fa.toDouble()).toFloat(), lhfP)
-        }
-
-        // Right arm — up and out (mirror)
-        val raX1 = cx + bodyR * 0.85f; val raY1 = bodyCy + bodyR * 0.15f
-        val raX2 = cx + bodyR * 1.35f; val raY2 = bodyCy - bodyR * 0.50f
-        canvas.drawLine(raX1, raY1, raX2, raY2, armPaint)
-        canvas.drawCircle(raX2, raY2, bodyR * 0.11f, handPaint)
-        for (fi in -2..2) {
-            val fa = (-Math.PI * 0.45 + fi * 0.22).toFloat()
-            canvas.drawLine(raX2, raY2,
-                raX2 + bodyR * 0.14f * Math.cos(fa.toDouble()).toFloat(),
-                raY2 + bodyR * 0.14f * Math.sin(fa.toDouble()).toFloat(), lhfP)
-        }
-
-        // ── Clock hands (pointing dramatically) ───────────────────────────
-        val sec  = c.get(Calendar.SECOND) + c.get(Calendar.MILLISECOND) / 1000f
-        val minF = c.get(Calendar.MINUTE) + sec / 60f
-        val hrF  = (c.get(Calendar.HOUR) % 12) + minF / 60f
-        val hrA  = (hrF / 12f * 2 * Math.PI - Math.PI / 2).toFloat()
-        val mnA  = (minF / 60f * 2 * Math.PI - Math.PI / 2).toFloat()
-
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.060f
-            color = Color.parseColor("#5A2200"); strokeCap = Paint.Cap.ROUND
-        }.also {
-            canvas.drawLine(cx, bodyCy,
-                cx + bodyR * 0.38f * Math.cos(hrA.toDouble()).toFloat(),
-                bodyCy + bodyR * 0.38f * Math.sin(hrA.toDouble()).toFloat(), it)
-        }
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = bodyR * 0.038f
-            color = Color.parseColor("#5A2200"); strokeCap = Paint.Cap.ROUND
-        }.also {
-            canvas.drawLine(cx, bodyCy,
-                cx + bodyR * 0.54f * Math.cos(mnA.toDouble()).toFloat(),
-                bodyCy + bodyR * 0.54f * Math.sin(mnA.toDouble()).toFloat(), it)
-        }
-
-        // ── Digital time & date ────────────────────────────────────────────
-        val tP = retroPaint(h * 0.068f, Color.parseColor("#FF8C00"))
-        canvas.drawText(
-            String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
-            cx, bodyCy + bodyR + h * 0.080f, tP)
-        val dP2 = retroSmallPaint(h * 0.046f, Color.parseColor("#664400"))
-        canvas.drawText("DOUBLE-TAP TO CHAT", cx, bodyCy + bodyR + h * 0.135f, dP2)
-    }
 }
