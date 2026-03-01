@@ -94,7 +94,8 @@ class ClockView @JvmOverloads constructor(
             WatchFaceStyle.WAVE_SEIKO    -> drawWave(canvas)
             WatchFaceStyle.PIP_BOY       -> drawPipBoy(canvas)
             WatchFaceStyle.JAMES_BOND    -> drawJamesBond(canvas)
-            WatchFaceStyle.CASIO_RETRO   -> drawCasio(canvas)
+            WatchFaceStyle.CASIO_RETRO        -> drawCasio(canvas)
+            WatchFaceStyle.MISS_MINUTES_FACE -> drawMissMinutesFace(canvas)
         }
     }
 
@@ -356,5 +357,127 @@ class ClockView @JvmOverloads constructor(
         canvas.drawText(String.format("%02d/%02d/%04d  %s",c.get(Calendar.DAY_OF_MONTH),c.get(Calendar.MONTH)+1,c.get(Calendar.YEAR),DAYS[c.get(Calendar.DAY_OF_WEEK)-1]),cx,h*0.845f,dP)
         val wrP = retroSmallPaint(h*0.048f, Color.parseColor("#333333"))
         canvas.drawText("WR 200M  G-SHOCK",cx,h*0.930f,wrP)
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 10. MISS MINUTES — TVA clock face (amber, ornate, animated)
+    // ════════════════════════════════════════════════════════════════════════
+    private fun drawMissMinutesFace(canvas: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        val cx = w / 2f; val cy = h / 2f
+        val c = cal()
+        val r = minOf(w, h) / 2f
+
+        // ── Background: deep TVA charcoal ──────────────────────────────────
+        p.color = Color.parseColor("#0C0800"); p.style = Paint.Style.FILL
+        canvas.drawCircle(cx, cy, r, p)
+
+        // Outer rim — burnished gold
+        val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = r * 0.065f
+            color = Color.parseColor("#B8860B")
+        }
+        canvas.drawCircle(cx, cy, r - rimPaint.strokeWidth / 2f, rimPaint)
+
+        // Inner rim — thin amber
+        val innerRim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 2.5f
+            color = Color.parseColor("#FFB300")
+        }
+        canvas.drawCircle(cx, cy, r * 0.87f, innerRim)
+
+        // ── Roman numeral tick marks ───────────────────────────────────────
+        val tickR = r * 0.82f
+        val romans = listOf("XII","I","II","III","IV","V","VI","VII","VIII","IX","X","XI")
+        val romanPaint = retroPaint(r * 0.068f, Color.parseColor("#D4A017"))
+        for (i in 0..11) {
+            val angle = (i / 12f * 2 * PI - PI / 2).toFloat()
+            val tx = cx + (tickR - r * 0.055f) * cos(angle)
+            val ty = cy + (tickR - r * 0.055f) * sin(angle) + romanPaint.textSize / 3f
+            canvas.drawText(romans[i], tx, ty, romanPaint)
+        }
+
+        // Minor tick marks (5-min intervals already covered by romans, draw 60 minor)
+        for (i in 0..59) {
+            if (i % 5 == 0) continue
+            val angle = (i / 60f * 2 * PI - PI / 2).toFloat()
+            val inner = r * 0.74f; val outer = r * 0.79f
+            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = 1.2f
+                color = Color.parseColor("#664400")
+            }
+            canvas.drawLine(cx + inner * cos(angle), cy + inner * sin(angle),
+                cx + outer * cos(angle), cy + outer * sin(angle), tp)
+        }
+
+        // ── TVA branding ───────────────────────────────────────────────────
+        val tvaP = retroPaint(r * 0.095f, Color.parseColor("#FF8C00"))
+        canvas.drawText("TVA", cx, cy - r * 0.30f, tvaP)
+        val subP = retroSmallPaint(r * 0.052f, Color.parseColor("#7A5C00"))
+        canvas.drawText("SACRED TIMELINE", cx, cy - r * 0.18f, subP)
+
+        // ── Animated gear ornaments ────────────────────────────────────────
+        val gearR = r * 0.06f; val gearDist = r * 0.55f
+        val gearAngle = animTick * 2 * PI.toFloat()
+        p.color = Color.parseColor("#4A3000"); p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f
+        canvas.save(); canvas.rotate(Math.toDegrees(gearAngle.toDouble()).toFloat(), cx - gearDist, cy + r * 0.20f)
+        canvas.drawCircle(cx - gearDist, cy + r * 0.20f, gearR, p); canvas.restore()
+        canvas.save(); canvas.rotate(-Math.toDegrees(gearAngle.toDouble()).toFloat(), cx + gearDist, cy + r * 0.20f)
+        canvas.drawCircle(cx + gearDist, cy + r * 0.20f, gearR, p); canvas.restore()
+
+        // ── Clock hands ───────────────────────────────────────────────────
+        val sec  = c.get(Calendar.SECOND) + c.get(Calendar.MILLISECOND) / 1000f
+        val minF = c.get(Calendar.MINUTE) + sec / 60f
+        val hrF  = (c.get(Calendar.HOUR) % 12) + minF / 60f
+
+        val hrAngle  = (hrF / 12f  * 2 * PI - PI / 2).toFloat()
+        val minAngle = (minF / 60f * 2 * PI - PI / 2).toFloat()
+        val secAngle = (sec  / 60f * 2 * PI - PI / 2).toFloat()
+
+        val handR = r * 0.68f
+
+        // Hour hand — thick gold
+        val hourPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = r * 0.055f
+            color = Color.parseColor("#D4A017"); strokeCap = Paint.Cap.ROUND
+        }
+        canvas.drawLine(cx - handR * 0.18f * cos(hrAngle), cy - handR * 0.18f * sin(hrAngle),
+            cx + handR * 0.52f * cos(hrAngle), cy + handR * 0.52f * sin(hrAngle), hourPaint)
+
+        // Minute hand — slimmer gold
+        val minPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = r * 0.032f
+            color = Color.parseColor("#FFB300"); strokeCap = Paint.Cap.ROUND
+        }
+        canvas.drawLine(cx - handR * 0.15f * cos(minAngle), cy - handR * 0.15f * sin(minAngle),
+            cx + handR * 0.72f * cos(minAngle), cy + handR * 0.72f * sin(minAngle), minPaint)
+
+        // Second hand — red/orange thin
+        val secPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 2f
+            color = Color.parseColor("#FF4500"); strokeCap = Paint.Cap.ROUND
+        }
+        canvas.drawLine(cx - handR * 0.20f * cos(secAngle), cy - handR * 0.20f * sin(secAngle),
+            cx + handR * 0.85f * cos(secAngle), cy + handR * 0.85f * sin(secAngle), secPaint)
+
+        // Center jewel
+        p.color = Color.parseColor("#D4A017"); p.style = Paint.Style.FILL
+        canvas.drawCircle(cx, cy, r * 0.045f, p)
+        p.color = Color.parseColor("#0C0800")
+        canvas.drawCircle(cx, cy, r * 0.020f, p)
+
+        // ── Date window at 3 o'clock position ─────────────────────────────
+        val dWx = cx + r * 0.52f; val dWy = cy
+        p.color = Color.parseColor("#1A1000"); p.style = Paint.Style.FILL
+        canvas.drawRoundRect(dWx - r*0.12f, dWy - r*0.08f, dWx + r*0.12f, dWy + r*0.08f, 4f, 4f, p)
+        p.color = Color.parseColor("#B8860B"); p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f
+        canvas.drawRoundRect(dWx - r*0.12f, dWy - r*0.08f, dWx + r*0.12f, dWy + r*0.08f, 4f, 4f, p)
+        val datePaint = retroSmallPaint(r * 0.065f, Color.parseColor("#FFB300"))
+        canvas.drawText("${c.get(Calendar.DAY_OF_MONTH)}", dWx, dWy + r * 0.025f, datePaint)
+
+        // ── Miss Minutes tagline ───────────────────────────────────────────
+        val tagP = retroSmallPaint(r * 0.048f, Color.parseColor("#553300"))
+        canvas.drawText("DOUBLE-TAP TO CHAT", cx, cy + r * 0.46f, tagP)
     }
 }
