@@ -31,7 +31,6 @@
 
         <activity android:name=".AppDrawerActivity" android:exported="false" android:theme="@style/AppTheme.Dark" />
         <activity android:name=".QuickPanelActivity" android:exported="false" android:theme="@style/AppTheme.Dark" />
-        <activity android:name=".TopMenuActivity" android:exported="false" android:theme="@style/AppTheme.Dark" />
         <activity android:name=".MissMinutesActivity" android:exported="false" android:theme="@style/AppTheme.Dark" />
         <activity android:name=".WallpaperPickerActivity" android:exported="false" />
 

@@ -9,6 +9,5 @@ enum class WatchFaceStyle(val displayName: String) {
     WAVE_SEIKO("Seiko Wave"),
     PIP_BOY("Pip-Boy 3000"),
     JAMES_BOND("007 Edition"),
-    CASIO_RETRO("CASIO G"),
-    MISS_MINUTES("Miss Minutes")
+    CASIO_RETRO("CASIO G-Shock")
 }

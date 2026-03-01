@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.GestureDetector
@@ -21,7 +22,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wallpaperView: android.widget.ImageView
     private lateinit var clockView: ClockView
     private lateinit var faceLabel: TextView
-    private lateinit var topHint: View
     private lateinit var gestureDetector: GestureDetectorCompat
 
     private val faceStyles = WatchFaceStyle.values()
@@ -56,7 +56,13 @@ class MainActivity : AppCompatActivity() {
         wallpaperView = findViewById(R.id.wallpaperView)
         clockView     = findViewById(R.id.clockView)
         faceLabel     = findViewById(R.id.faceLabel)
-        topHint       = findViewById(R.id.topHint)
+
+        // Retro font on face label
+        try {
+            faceLabel.typeface = Typeface.createFromAsset(assets, "fonts/retro.ttf")
+        } catch (_: Exception) {
+            faceLabel.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
 
         val saved = getSharedPreferences("launcher", MODE_PRIVATE).getInt("face_index", 0)
         currentFaceIndex = saved.coerceIn(0, faceStyles.size - 1)
@@ -91,76 +97,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupGestures() {
         val listener = object : GestureDetector.SimpleOnGestureListener() {
-
-            private var downY = 0f
-
-            override fun onDown(e: MotionEvent): Boolean {
-                downY = e.y
-                return true
-            }
-
-            override fun onSingleTapUp(e: MotionEvent): Boolean {
-                // Tap Miss Minutes face → open her screen
-                if (clockView.style == WatchFaceStyle.MISS_MINUTES) {
-                    startActivity(Intent(this@MainActivity, MissMinutesActivity::class.java))
-                    overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
-                    return true
-                }
-                return false
-            }
-
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 val dY = (e1?.y ?: 0f) - e2.y
                 val dX = e2.x - (e1?.x ?: 0f)
                 val adX = abs(dX); val adY = abs(dY)
-
                 return when {
-                    // Swipe DOWN from top 25% → open top menu
-                    dY < -80 && adY > adX && (e1?.y ?: 0f) < height() * 0.30f -> {
-                        openTopMenu(); true
-                    }
-                    // Swipe UP → app drawer
-                    dY > 80 && dY > adX -> { openAppDrawer(); true }
-                    // Swipe LEFT → quick panel
-                    dX < -80 && adX > adY -> { openQuickPanel(); true }
-                    // Swipe RIGHT → prev face
-                    dX > 80 && adX > adY -> { cycleFace(-1); true }
+                    dY > 80 && dY > adX -> { openAppDrawer(); true }       // UP → apps
+                    dX < -80 && adX > adY -> { openQuickPanel(); true }    // LEFT → panel
+                    dX > 80 && adX > adY -> { cycleFace(-1); true }        // RIGHT → prev face
                     else -> false
                 }
             }
-
-            override fun onLongPress(e: MotionEvent) = openTopMenu()
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                // Double-tap → open Miss Minutes
+                startActivity(Intent(this@MainActivity, MissMinutesActivity::class.java))
+                overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
+                return true
+            }
+            override fun onLongPress(e: MotionEvent) {
+                cycleFace(1)  // Long press → next face
+            }
+            override fun onDown(e: MotionEvent) = true
         }
         gestureDetector = GestureDetectorCompat(this, listener)
         findViewById<View>(R.id.rootLayout).setOnTouchListener { _, e -> gestureDetector.onTouchEvent(e); true }
     }
 
-    private fun height() = resources.displayMetrics.heightPixels.toFloat()
-
     private fun cycleFace(d: Int) {
         currentFaceIndex = (currentFaceIndex + d + faceStyles.size) % faceStyles.size
     }
-
-    private fun openTopMenu() {
-        startActivity(Intent(this, TopMenuActivity::class.java))
-        overridePendingTransition(R.anim.slide_down_in, R.anim.fade_out)
-    }
-
     private fun openAppDrawer() {
         startActivity(Intent(this, AppDrawerActivity::class.java))
         overridePendingTransition(R.anim.slide_up, R.anim.fade_out)
     }
-
     private fun openQuickPanel() {
         startActivity(Intent(this, QuickPanelActivity::class.java))
         overridePendingTransition(R.anim.slide_left, R.anim.fade_out)
     }
-
     private fun registerPackageReceiver() {
         registerReceiver(packageReceiver, IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED)
-            addDataScheme("package")
+            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addDataScheme("package")
         })
     }
 }
