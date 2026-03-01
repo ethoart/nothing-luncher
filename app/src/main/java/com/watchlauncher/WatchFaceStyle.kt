@@ -10,5 +10,9 @@ enum class WatchFaceStyle(val displayName: String) {
     PIP_BOY("Pip-Boy 3000"),
     JAMES_BOND("007 Edition"),
     CASIO_RETRO("CASIO G-Shock"),
-    MISS_MINUTES_FACE("Miss Minutes")
+    MISS_MINUTES_FACE("Miss Minutes"),
+    MISS_MINUTES_GLOWING("Miss Minutes: Glow"),
+    TVA_CRT_MONITOR("TVA Monitor"),
+    TVA_TIMEDOOR("TVA TimeDoor"),
+    MISS_MINUTES_SCARED("Miss Minutes: Alert")
 }
