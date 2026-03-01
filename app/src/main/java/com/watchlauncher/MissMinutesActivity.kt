@@ -1,5 +1,10 @@
 package com.watchlauncher
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.*
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -11,253 +16,279 @@ import android.speech.tts.UtteranceProgressListener
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.GestureDetectorCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Calendar
 import java.util.Locale
 import kotlin.math.abs
 
 class MissMinutesActivity : AppCompatActivity() {
 
-    private lateinit var clockView: ClockView
+    private lateinit var gifView: ImageView
+    private lateinit var timeOverlay: TextView
     private lateinit var speechBubble: TextView
     private lateinit var statusText: TextView
+    private lateinit var tapHint: TextView
     private lateinit var gestureDetector: GestureDetectorCompat
 
+    private var gifPlayer: GifPlayer? = null
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var isTalking = false
 
-    // ── Replace with your actual Gemini API key ─────────────────────────────
+    // Mouth overlay paint for talking animation
+    private var mouthOpen = 0f
+    private val mouthTicker = object : Runnable {
+        override fun run() {
+            if (isTalking) {
+                mouthOpen = (0.4f + 0.6f * Math.abs(Math.sin(System.currentTimeMillis() / 80.0))).toFloat()
+            } else {
+                mouthOpen = (mouthOpen - 0.08f).coerceAtLeast(0f)
+            }
+            handler.postDelayed(this, 50)
+        }
+    }
+
+    // Time ticker
+    private val timeTicker = object : Runnable {
+        override fun run() {
+            updateTime()
+            handler.postDelayed(this, 10000)
+        }
+    }
+
+    // Baked-in Gemini API key
     private val GEMINI_API_KEY = "AIzaSyD3pPUv_tEdUb9-HKBeTwTVSfw5EWJm3cw"
     private val GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_API_KEY"
 
-    private val MISS_MINUTES_SYSTEM = """
-You are Miss Minutes, the animated AI mascot of the Time Variance Authority (TVA) from the Loki TV series on Disney+.
-You speak in a warm, Southern American accent and are cheerful, slightly ominous but friendly. 
-You refer to the TVA mission, Sacred Timeline, and the "He Who Remains". 
-Keep responses SHORT — under 3 sentences — since you're on a tiny smartwatch screen.
-Use phrases like "Well, hey there!", "Sugar", "Isn't that just the bee's knees!", "sacred timeline", "TVA".
-You can also tell the time when asked. Always stay in character as Miss Minutes.
+    private val MISS_MINUTES_PROMPT = """
+You are Miss Minutes, the animated clock AI mascot of the Time Variance Authority (TVA) from the Loki TV series.
+Personality: cheerful, Southern American accent, slightly ominous, friendly, obsessed with TVA mission.
+RULES:
+- Keep ALL responses under 25 words — you are on a tiny smartwatch
+- Use phrases like "Well hey there!", "Sugar", "bless your heart", "Sacred Timeline", "TVA", "Isn't that just wonderful!"
+- If asked the time, tell the actual current time
+- Always stay in character as Miss Minutes
+- Never break character
 """.trimIndent()
 
-    private val conversationHistory = mutableListOf<Pair<String, String>>() // user, assistant
+    private val history = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_miss_minutes)
 
-        clockView   = findViewById(R.id.missClockView)
+        gifView     = findViewById(R.id.missGifView)
+        timeOverlay = findViewById(R.id.timeOverlay)
         speechBubble = findViewById(R.id.speechBubble)
         statusText  = findViewById(R.id.statusText)
+        tapHint     = findViewById(R.id.tapHint)
 
-        clockView.style = WatchFaceStyle.MISS_MINUTES
-
+        setupGifPlayer()
         setupTTS()
         setupGestures()
+        setupPermissions()
+        handler.post(timeTicker)
+        handler.post(mouthTicker)
 
-        // Greeting on open
+        // Opening line
         handler.postDelayed({
-            speak("Well, hey there, Sugar! I'm Miss Minutes! Tap me to chat, or ask about the Sacred Timeline!")
-        }, 800)
+            say("Well, hey there Sugar! I'm Miss Minutes! Tap me and let's chat!")
+        }, 600)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        gifPlayer?.recycle()
         tts?.stop(); tts?.shutdown()
         speechRecognizer?.destroy()
+        handler.removeCallbacksAndMessages(null)
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // TEXT TO SPEECH
+    // GIF ANIMATION
+    // ════════════════════════════════════════════════════════════════════════
+    private fun setupGifPlayer() {
+        gifPlayer = GifPlayer(this)
+        gifPlayer?.load()
+        gifPlayer?.onFrameUpdate = { bmp ->
+            // Overlay time text directly on the bitmap
+            val withTime = drawTimeOnFrame(bmp)
+            gifView.setImageBitmap(withTime)
+        }
+        gifPlayer?.start()
+    }
+
+    private fun drawTimeOnFrame(src: Bitmap): Bitmap {
+        val out = src.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(out)
+
+        // Time text on body of clock character (center area)
+        val w = out.width.toFloat(); val h = out.height.toFloat()
+        val cal = Calendar.getInstance()
+        val timeStr = String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+
+        // Shadow
+        val shadowP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(120, 0, 0, 0)
+            textAlign = Paint.Align.CENTER
+            textSize = h * 0.14f
+            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+        }
+        canvas.drawText(timeStr, w/2f + 2f, h*0.58f + 2f, shadowP)
+
+        // Main text
+        val timeP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#5A1800")
+            textAlign = Paint.Align.CENTER
+            textSize = h * 0.14f
+            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+        }
+        canvas.drawText(timeStr, w/2f, h*0.58f, timeP)
+
+        // If talking — draw open mouth overlay
+        if (mouthOpen > 0.05f) {
+            val mp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb((150 * mouthOpen).toInt(), 40, 10, 0); style = Paint.Style.FILL }
+            val mw = w * 0.18f; val mx = w/2f; val my = h * 0.68f
+            val mPath = Path()
+            mPath.moveTo(mx - mw, my)
+            mPath.quadTo(mx, my + h*0.065f*mouthOpen, mx + mw, my)
+            mPath.quadTo(mx, my + h*0.015f, mx - mw, my)
+            mPath.close()
+            canvas.drawPath(mPath, mp)
+        }
+
+        return out
+    }
+
+    private fun updateTime() {
+        val cal = Calendar.getInstance()
+        timeOverlay.text = String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // TTS
     // ════════════════════════════════════════════════════════════════════════
     private fun setupTTS() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Slightly higher pitch for Miss Minutes' cheerful voice
                 tts?.language = Locale.US
-                tts?.setSpeechRate(0.95f)
-                tts?.setPitch(1.25f)
-
+                tts?.setSpeechRate(1.0f)
+                tts?.setPitch(1.3f)  // Higher pitch for Miss Minutes
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        handler.post {
-                            clockView.isTalking = true
-                            statusText.text = "Miss Minutes is speaking..."
-                        }
+                    override fun onStart(uid: String?) {
+                        handler.post { isTalking = true; statusText.text = "Speaking..."; tapHint.text = "..." }
                     }
-                    override fun onDone(utteranceId: String?) {
-                        handler.post {
-                            clockView.isTalking = false
-                            statusText.text = "Tap to talk"
-                        }
+                    override fun onDone(uid: String?) {
+                        handler.post { isTalking = false; statusText.text = "Tap to talk"; tapHint.text = "👆 Tap" }
                     }
-                    override fun onError(utteranceId: String?) {
-                        handler.post { clockView.isTalking = false }
-                    }
+                    override fun onError(uid: String?) { handler.post { isTalking = false } }
                 })
             }
         }
     }
 
-    private fun speak(text: String) {
-        speechBubble.text = text
+    private fun say(text: String) {
+        speechBubble.text = "\uD83D\uDDE8️ $text"
         speechBubble.visibility = View.VISIBLE
-        val params = android.os.Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "mm_${System.currentTimeMillis()}")
-        }
+        val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "mm_${System.currentTimeMillis()}") }
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "mm_${System.currentTimeMillis()}")
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // SPEECH RECOGNITION
     // ════════════════════════════════════════════════════════════════════════
+    private fun setupPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1001)
+        }
+    }
+
     private fun startListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            speak("Sugar, speech recognition isn't available on this device! Try typing instead!")
+            say("Sugar, speech recognition isn't available here! How unfortunate for the Sacred Timeline!")
             return
         }
-
-        tts?.stop()
+        tts?.stop(); isTalking = false
         speechRecognizer?.destroy()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: android.os.Bundle?) {
-                handler.post { statusText.text = "Listening... speak now!" }
+            override fun onReadyForSpeech(p: Bundle?) { handler.post { statusText.text = "🎤 Listening..."; tapHint.text = "Speak!" } }
+            override fun onBeginningOfSpeech() { handler.post { statusText.text = "Hearing you..." } }
+            override fun onResults(r: Bundle?) {
+                val text = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                handler.post { speechBubble.text = "You: $text"; statusText.text = "Thinking..."; askGemini(text) }
             }
-            override fun onBeginningOfSpeech() {
-                handler.post { statusText.text = "I hear ya, Sugar!" }
-            }
-            override fun onResults(results: android.os.Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val text = matches?.firstOrNull() ?: return
-                handler.post {
-                    statusText.text = "You said: $text"
-                    speechBubble.text = "You: $text"
-                    sendToGemini(text)
-                }
-            }
-            override fun onError(error: Int) {
+            override fun onError(e: Int) {
                 handler.post {
                     statusText.text = "Tap to talk"
-                    speak("Oh bless your heart, I didn't quite catch that! Try again, Sugar!")
+                    say("Bless your heart, I didn't catch that! Try again, Sugar!")
                 }
             }
             override fun onEndOfSpeech() { handler.post { statusText.text = "Processing..." } }
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onPartialResults(partialResults: android.os.Bundle?) {}
-            override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+            override fun onRmsChanged(v: Float) {}
+            override fun onBufferReceived(b: ByteArray?) {}
+            override fun onPartialResults(r: Bundle?) {}
+            override fun onEvent(t: Int, p: Bundle?) {}
         })
-
-        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        speechRecognizer?.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Talk to Miss Minutes...")
-        }
-        speechRecognizer?.startListening(intent)
+        })
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // GEMINI AI
     // ════════════════════════════════════════════════════════════════════════
-    private fun sendToGemini(userMessage: String) {
-        if (GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE") {
-            // Demo mode — Miss Minutes responds without real API
-            val demoResponses = listOf(
-                "Well, hey there, Sugar! The TVA's got everything under control! Isn't that just the bee's knees?",
-                "Oh my stars, what a great question! The Sacred Timeline thanks you for your cooperation!",
-                "Bless your heart! Every moment is precious on the Sacred Timeline, Sugar!",
-                "Well now, that's quite the variant question! He Who Remains would be so proud of you!",
-                "Don't you worry your pretty little head! Miss Minutes has got all the answers you need!"
-            )
-            val response = demoResponses[(userMessage.length) % demoResponses.size]
-            conversationHistory.add(Pair(userMessage, response))
-            handler.post { speak(response) }
-            return
-        }
-
-        statusText.text = "Miss Minutes is thinking..."
-
+    private fun askGemini(userMsg: String) {
         Thread {
             try {
                 val url = URL(GEMINI_URL)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 15000
+                conn.apply { requestMethod="POST"; setRequestProperty("Content-Type","application/json"); doOutput=true; connectTimeout=10000; readTimeout=15000 }
 
-                // Build conversation with history
-                val contentsArray = JSONArray()
-
-                // System instruction as first user turn
-                val sysObj = JSONObject().apply {
-                    put("role", "user")
-                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", MISS_MINUTES_SYSTEM) }) })
+                val contents = JSONArray()
+                // System seed
+                contents.put(JSONObject().apply { put("role","user"); put("parts",JSONArray().apply { put(JSONObject().apply { put("text", MISS_MINUTES_PROMPT) }) }) })
+                contents.put(JSONObject().apply { put("role","model"); put("parts",JSONArray().apply { put(JSONObject().apply { put("text","Well, hey there! I'm Miss Minutes, always happy to help on behalf of the TVA, Sugar!") }) }) })
+                // History (last 3)
+                for ((u,a) in history.takeLast(3)) {
+                    contents.put(JSONObject().apply { put("role","user"); put("parts",JSONArray().apply { put(JSONObject().apply { put("text",u) }) }) })
+                    contents.put(JSONObject().apply { put("role","model"); put("parts",JSONArray().apply { put(JSONObject().apply { put("text",a) }) }) })
                 }
-                contentsArray.put(sysObj)
-                val sysResp = JSONObject().apply {
-                    put("role", "model")
-                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", "Well, hey there! I'm Miss Minutes, the TVA's most helpful little assistant! How can I help you today, Sugar?") }) })
-                }
-                contentsArray.put(sysResp)
-
-                // Add history
-                for ((u, a) in conversationHistory.takeLast(4)) {
-                    contentsArray.put(JSONObject().apply {
-                        put("role", "user")
-                        put("parts", JSONArray().apply { put(JSONObject().apply { put("text", u) }) })
-                    })
-                    contentsArray.put(JSONObject().apply {
-                        put("role", "model")
-                        put("parts", JSONArray().apply { put(JSONObject().apply { put("text", a) }) })
-                    })
-                }
-
-                // Current message
-                contentsArray.put(JSONObject().apply {
-                    put("role", "user")
-                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", userMessage) }) })
-                })
+                // Current
+                contents.put(JSONObject().apply { put("role","user"); put("parts",JSONArray().apply { put(JSONObject().apply { put("text",userMsg) }) }) })
 
                 val body = JSONObject().apply {
-                    put("contents", contentsArray)
-                    put("generationConfig", JSONObject().apply {
-                        put("maxOutputTokens", 120)
-                        put("temperature", 0.8)
-                    })
+                    put("contents", contents)
+                    put("generationConfig", JSONObject().apply { put("maxOutputTokens",80); put("temperature",0.9) })
                 }
+                OutputStreamWriter(conn.outputStream).apply { write(body.toString()); flush(); close() }
 
-                val writer = OutputStreamWriter(conn.outputStream)
-                writer.write(body.toString()); writer.flush(); writer.close()
-
-                val responseCode = conn.responseCode
-                if (responseCode == 200) {
-                    val response = conn.inputStream.bufferedReader().readText()
-                    val json = JSONObject(response)
-                    val text = json.getJSONArray("candidates")
-                        .getJSONObject(0).getJSONObject("content")
-                        .getJSONArray("parts").getJSONObject(0).getString("text")
-
-                    conversationHistory.add(Pair(userMessage, text))
-                    handler.post { speak(text) }
+                if (conn.responseCode == 200) {
+                    val resp = JSONObject(conn.inputStream.bufferedReader().readText())
+                    val text = resp.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
+                    history.add(Pair(userMsg, text))
+                    handler.post { say(text) }
                 } else {
-                    val err = conn.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
-                    handler.post { speak("Oh sugar, something went wrong with the Sacred Timeline! Error: $responseCode") }
+                    val errBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    handler.post { say("Oh sugar, something went sideways! The TVA's looking into it!") }
                 }
                 conn.disconnect()
             } catch (e: Exception) {
-                handler.post { speak("Bless your heart, there was a nexus event! Check your network connection, Sugar!") }
+                handler.post { say("Bless your heart, there was a nexus event! Check your connection, Sugar!") }
             }
         }.start()
     }
@@ -267,14 +298,10 @@ You can also tell the time when asked. Always stay in character as Miss Minutes.
     // ════════════════════════════════════════════════════════════════════════
     private fun setupGestures() {
         val listener = object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapUp(e: MotionEvent): Boolean {
-                startListening(); return true
-            }
+            override fun onSingleTapUp(e: MotionEvent): Boolean { startListening(); return true }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                val dX = e2.x - (e1?.x ?: 0f)
-                if (dX > 80 && dX > abs(e2.y - (e1?.y ?: 0f))) {
-                    finish(); overridePendingTransition(R.anim.fade_in, R.anim.slide_right); return true
-                }
+                val dx = e2.x - (e1?.x ?: 0f)
+                if (dx > 80 && dx > abs(e2.y - (e1?.y ?: 0f))) { finish(); return true }
                 return false
             }
             override fun onDown(e: MotionEvent) = true

@@ -13,11 +13,36 @@
         android:scaleType="centerCrop"
         android:contentDescription="Wallpaper" />
 
-    <!-- Full-screen clock canvas — no dock -->
+    <!-- Full-screen clock canvas -->
     <com.watchlauncher.ClockView
         android:id="@+id/clockView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <!-- Top drop-down hint bar (always visible, subtle) -->
+    <LinearLayout
+        android:id="@+id/topHint"
+        android:layout_width="match_parent"
+        android:layout_height="14dp"
+        android:layout_gravity="top"
+        android:gravity="center"
+        android:background="#22FFFFFF"
+        android:orientation="horizontal">
+        <View
+            android:layout_width="20dp"
+            android:layout_height="2dp"
+            android:layout_marginEnd="3dp"
+            android:background="#55FFFFFF" />
+        <View
+            android:layout_width="4dp"
+            android:layout_height="4dp"
+            android:background="@drawable/bg_pill" />
+        <View
+            android:layout_width="20dp"
+            android:layout_height="2dp"
+            android:layout_marginStart="3dp"
+            android:background="#55FFFFFF" />
+    </LinearLayout>
 
     <!-- Face name label fades in/out on switch -->
     <TextView
@@ -25,7 +50,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="18dp"
         android:paddingStart="10dp"
         android:paddingEnd="10dp"
         android:paddingTop="3dp"
@@ -35,5 +60,13 @@
         android:textSize="9sp"
         android:alpha="0"
         android:text="Nothing OS" />
+
+    <!-- Swipe up hint -->
+    <View
+        android:layout_width="24dp"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="5dp"
+        android:background="@drawable/bg_swipe_hint" />
 
 </FrameLayout>

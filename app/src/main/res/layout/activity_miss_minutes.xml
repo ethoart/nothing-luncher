@@ -6,46 +6,94 @@
     android:layout_height="match_parent"
     android:background="#FF1A0800">
 
-    <!-- Full screen animated Miss Minutes -->
-    <com.watchlauncher.ClockView
-        android:id="@+id/missClockView"
+    <!-- GIF animation fills screen -->
+    <ImageView
+        android:id="@+id/missGifView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:contentDescription="Miss Minutes" />
 
-    <!-- Speech bubble (shown when talking) -->
+    <!-- TVA header strip -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#CC000000"
+        android:orientation="vertical"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="⏳ T.V.A. ⏳"
+            android:textColor="#FF8C00"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/timeOverlay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="00:00"
+            android:textColor="#FFAA00"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <!-- Status chip -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="5dp"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/bg_pill"
+        android:textColor="#FF8C00"
+        android:textSize="7sp"
+        android:fontFamily="monospace"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text="Tap to talk" />
+
+    <!-- Speech bubble at bottom -->
     <TextView
         android:id="@+id/speechBubble"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="28dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginEnd="6dp"
+        android:layout_marginBottom="24dp"
         android:background="@drawable/bg_speech_bubble"
-        android:textColor="#111111"
-        android:textSize="9sp"
+        android:textColor="#1A0800"
+        android:textSize="8sp"
+        android:textStyle="bold"
         android:fontFamily="monospace"
-        android:padding="8dp"
+        android:padding="7dp"
         android:gravity="center"
-        android:maxLines="3"
+        android:maxLines="4"
         android:visibility="gone"
         android:text="" />
 
-    <!-- Status text -->
+    <!-- Tap hint -->
     <TextView
-        android:id="@+id/statusText"
+        android:id="@+id/tapHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="6dp"
-        android:background="@drawable/bg_pill"
-        android:textColor="#FF8C00"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="5dp"
+        android:text="👆 Tap"
+        android:textColor="#FF8C0099"
         android:textSize="8sp"
-        android:fontFamily="monospace"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="2dp"
-        android:text="Tap to talk" />
+        android:fontFamily="monospace" />
 
 </FrameLayout>
